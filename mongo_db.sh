@@ -23,7 +23,7 @@ VALIDATE() {
  echo -e "$TIME_STAMP [SUCCESS] $G Success .. $N" | tee -a $LOGFILE
  fi
 }
- cp mongo.repo /etc/yum.repos.d/mongo.repo
+ cp -R mongo.repo /etc/yum.repos.d/mongo.repo
  VALIDATE $? "Adding mongo.repo"
 
  dnf install mongodb-org -y &>> $LOGFILE
