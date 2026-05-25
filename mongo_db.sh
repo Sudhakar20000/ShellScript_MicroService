@@ -11,7 +11,7 @@ N="\e[0m"
 TIME_STAMP=$(date "+%Y-%m-%d %H:%M:%S")
 USERID=$(id -u)
 
-if [ $USERID -eq 0 ]; then
+if [ $USERID -ne 0 ]; then
   echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE
   exit 1
 fi
