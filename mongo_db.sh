@@ -29,7 +29,7 @@ VALIDATE() {
  dnf install mongodb-org -y &>> $LOGFILE
  VALIDATE $? "Installing Mongo"
 
- systemctl enable --now mongodb
+ systemctl enable --now mongod
  VALIDATE $? "started and enable mongod"
 
  sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mongod.conf/
