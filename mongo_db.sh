@@ -17,10 +17,10 @@ if [ $USERID -ne 0 ]; then
 fi
 VALIDATE () {
   if [ $1 -ne 0 ]; then
-  echo -e "$TIME_STAMP [ERROR] $R error for ..$2 $N" | tee -a $LOGFILE
+  echo -e "$TIME_STAMP [ERROR] $R error for ..$2   $N" | tee -a $LOGFILE
   exit 1
   else
-  echo -e "$TIME_STAMP [SUCCESS] $G success for ..$2 $N" | tee -a $LOGFILE
+  echo -e "$TIME_STAMP [SUCCESS] $G success for ..$2   $N" | tee -a $LOGFILE
   fi
 }
 
@@ -36,5 +36,5 @@ VALIDATE $? "enable and start"
 sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mongod.conf
 VALIDATE $? "change config"
 
-syatemctl restart mongod
+systemctl restart mongod
 VALIDATE $? "restart mongod"
