@@ -2,35 +2,44 @@
 
 AMI_ID="ami-0220d79f3f480ecf5"
 INSTANCE_TYPE="t3.micro"
-HOSTED_ZONE_ID="us-east-1"
+HOSTED_ZONE_ID="Z03774782PWBJZ4CLRX9V"
 DOMAIN="sudhakar.shop"
 VPC_ID="vpc-071995b72d576a774"
 SUBNET_ID="subnet-08abe1757462b2432"
+
+MY_IP=$(curl -s ifconfig.me)
 
 for component in "$@"
 do
     echo "Processing: $component"
 
-    # Create Security Group
-    SG_ID=$(aws ec2 create-security-group \
-        --group-name robo-${component} \
-        --description "SG for ${component}" \
-        --vpc-id $VPC_ID \
-        --query 'GroupId' \
+    # Check Security Group Exists or Not
+    SG_ID=$(aws ec2 describe-security-groups \
+        --filters Name=group-name,Values=robo-${component} \
+        --query 'SecurityGroups[0].GroupId' \
         --output text)
 
-    echo "Created SG: $SG_ID"
+    if [ "$SG_ID" == "None" ]
+    then
+        echo "Creating Security Group"
 
-    # Allow SSH Port 22
-    MY_IP=$(curl -s ifconfig.me)
+        SG_ID=$(aws ec2 create-security-group \
+            --group-name robo-${component} \
+            --description "SG for ${component}" \
+            --vpc-id $VPC_ID \
+            --query 'GroupId' \
+            --output text)
 
-    aws ec2 authorize-security-group-ingress \
-        --group-id $SG_ID \
-        --protocol tcp \
-        --port 22 \
-        --cidr ${MY_IP}/32
+        aws ec2 authorize-security-group-ingress \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${MY_IP}/32
 
-    echo "SSH rule added"
+        echo "SSH rule added"
+    else
+        echo "Security Group already exists: $SG_ID"
+    fi
 
     # Create EC2 Instance
     INSTANCE_ID=$(aws ec2 run-instances \
@@ -38,7 +47,6 @@ do
         --instance-type $INSTANCE_TYPE \
         --security-group-ids $SG_ID \
         --subnet-id $SUBNET_ID \
-        --key-name $KEY_NAME \
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ec2-${component}}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
