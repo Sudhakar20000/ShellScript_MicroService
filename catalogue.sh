@@ -1,99 +1,91 @@
-Complete!
-2026-05-26 12:41:34 [INFO]  success for install nodejs
-id: ‘roboshop’: no such user
-catalogue.sh: line 39: syntax error near unexpected token `else'
-catalogue.sh: line 39: ` else '
-
-98.92.127.196 | 172.31.11.94 | t3.micro | https://github.com/Sudhakar20000/ShellScript_MicroService.git
-[ ec2-user@ip-172-31-11-94 ~/ShellScript_MicroService ]$ cat catalogue.s
-cat: catalogue.s: No such file or directory
-
-98.92.127.196 | 172.31.11.94 | t3.micro | https://github.com/Sudhakar20000/ShellScript_MicroService.git
-[ ec2-user@ip-172-31-11-94 ~/ShellScript_MicroService ]$ cat catalogue.sh
 #!/bin/bash
+
 LOGDIR=/var/log/roboshop_log
-LOGFILE=$LOGDIR/$0.sh
-mkdir -p /var/log/roboshop_log
+LOGFILE=$LOGDIR/catalogue.log
+
+mkdir -p $LOGDIR
 chmod -R 755 $LOGDIR
 chown -R ec2-user:ec2-user $LOGDIR
+
 SCRIPI_DIR=$PWD
+
 R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
+
 USERID=$(id -u)
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
 if [ $USERID -ne 0 ]; then
-  echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE
+  echo -e "$TIME_STAMP [ERROR] ${R}switch to root user${N}" | tee -a $LOGFILE
   exit 1
 fi
+
 VALIDATE () {
     if [ $1 -ne 0 ]; then
-    echo -e "$TIME_STAMP [error] $R error for $2 $N" | tee -a $LOGFILE
-    exit 1
+        echo -e "$TIME_STAMP [ERROR] ${R}error for $2${N}" | tee -a $LOGFILE
+        exit 1
     else
-    echo -e "$TIME_STAMP [INFO] $G success for $2 $N" | tee -a $LOGFILE
-fi
+        echo -e "$TIME_STAMP [INFO] ${G}success for $2${N}" | tee -a $LOGFILE
+    fi
 }
 
-dnf module disable nodejs -y
-dnf module enable nodejs:20 -y
+dnf module disable nodejs -y &>>$LOGFILE
+dnf module enable nodejs:20 -y &>>$LOGFILE
+VALIDATE $? "Enable NodeJS 20"
 
-VALIDATE $? "enable nodejs20"
+dnf install nodejs -y &>>$LOGFILE
+VALIDATE $? "Install NodeJS"
 
-dnf install nodejs -y
-
-VALIDATE $? "install nodejs"
-id roboshop
-if [ $? -ne 0]
- useradd --system --home /app --shell /sbin/nologin --comment "roboshop system user" roboshop
- VALIDATE $? "useradded"
- else
- echo -e "user already exist $Y SKPPING $N"
+id roboshop &>>$LOGFILE
+if [ $? -ne 0 ]; then
+    useradd --system --home /app --shell /sbin/nologin \
+    --comment "roboshop system user" roboshop
+    VALIDATE $? "User added"
+else
+    echo -e "user already exists $Y SKIPPING $N"
 fi
 
-rm -rf /app  &>>$LOGS_FILE
-rm -rf /tmp/catalogue.zip  &>>$LOGS_FILE
-VALIDATE $? "removing existing directorys"
+rm -rf /app &>>$LOGFILE
+rm -rf /tmp/catalogue.zip &>>$LOGFILE
+VALIDATE $? "Clean old files"
 
-mkdir -R /app  &>>$LOGS_FILE
-curl -o /tmp/catalogue.zip https://roboshop-artifacts.s3.amazonaws.com/catalogue-v3.zip   &>>$LOGS_FILE
-VALIDATE $? " create and download code"
+mkdir -p /app &>>$LOGFILE
 
-cd /app   &>>$LOGS_FILE
-unzip /tmp/catalogue.zip  &>>$LOGS_FILE
-VALIDATE $? "unzip the code"
+curl -o /tmp/catalogue.zip \
+https://roboshop-artifacts.s3.amazonaws.com/catalogue-v3.zip &>>$LOGFILE
+VALIDATE $? "Download code"
 
-cd /app   &>>$LOGS_FILE
-npm install  &>>$LOGS_FILE
-VALIDATE $? "install npm packages"
+cd /app &>>$LOGFILE
+unzip /tmp/catalogue.zip &>>$LOGFILE
+VALIDATE $? "Unzip code"
+
+cd /app &>>$LOGFILE
+npm install &>>$LOGFILE
+VALIDATE $? "Install npm packages"
 
 cp -r $SCRIPI_DIR/catalogue.service /etc/systemd/system/
-VALIDATE $? "created service file"
+VALIDATE $? "Copy service file"
 
-systemctl daemon-reload
-systemctl enable --now catalogue
-VALIDATE $? "demon reload and start catalog"
+systemctl daemon-reload &>>$LOGFILE
+systemctl enable --now catalogue &>>$LOGFILE
+VALIDATE $? "Start catalogue service"
 
 cp -r $SCRIPI_DIR/mongo.repo /etc/yum.repos.d/mongo.repo
-VALIDATE $? "added mongo repo"
+VALIDATE $? "Add Mongo repo"
 
-dnf install mongodb-mongosh -y
-VALIDATE $? "install mongoclint"
+dnf install mongodb-mongosh -y &>>$LOGFILE
+VALIDATE $? "Install Mongo client"
 
+INDEX=$(mongosh --host mongodb.sudhakar.shop --quiet --eval 'db.getMongo().getDBNames().indexOf("catalogue")')
 
-INDEX=$(mongosh --host mongodb.sudhakar.shop --eval 'db.getMongo().getDBNames().indexOf("catalogue")')
-
-if [ $INDEX -lt 0 ]; then
-    mongosh --host mongodb.sudhakar.shop </app/db/master-data.js &>>$LOGS_FILE
+if [ "$INDEX" -lt 0 ]; then
+    mongosh --host mongodb.sudhakar.shop </app/db/master-data.js &>>$LOGFILE
     VALIDATE $? "Load Products"
 else
     echo -e "Products already loaded ... $Y SKIPPING $N"
 fi
 
-systemctl enable catalogue &>>$LOGS_FILE
-systemctl restart catalogue &>>$LOGS_FILE
-VALIDATE $? "Restarting catalogue"
-
-
-
+systemctl restart catalogue &>>$LOGFILE
+VALIDATE $? "Restart catalogue"
