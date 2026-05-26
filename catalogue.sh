@@ -1,3 +1,15 @@
+Complete!
+2026-05-26 12:41:34 [INFO]  success for install nodejs
+id: ‘roboshop’: no such user
+catalogue.sh: line 39: syntax error near unexpected token `else'
+catalogue.sh: line 39: ` else '
+
+98.92.127.196 | 172.31.11.94 | t3.micro | https://github.com/Sudhakar20000/ShellScript_MicroService.git
+[ ec2-user@ip-172-31-11-94 ~/ShellScript_MicroService ]$ cat catalogue.s
+cat: catalogue.s: No such file or directory
+
+98.92.127.196 | 172.31.11.94 | t3.micro | https://github.com/Sudhakar20000/ShellScript_MicroService.git
+[ ec2-user@ip-172-31-11-94 ~/ShellScript_MicroService ]$ cat catalogue.sh
 #!/bin/bash
 LOGDIR=/var/log/roboshop_log
 LOGFILE=$LOGDIR/$0.sh
@@ -12,7 +24,7 @@ N="\e[0m"
 USERID=$(id -u)
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 if [ $USERID -ne 0 ]; then
-  echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE 
+  echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE
   exit 1
 fi
 VALIDATE () {
@@ -36,7 +48,7 @@ id roboshop
 if [ $? -ne 0]
  useradd --system --home /app --shell /sbin/nologin --comment "roboshop system user" roboshop
  VALIDATE $? "useradded"
- else 
+ else
  echo -e "user already exist $Y SKPPING $N"
 fi
 
@@ -82,8 +94,6 @@ fi
 systemctl enable catalogue &>>$LOGS_FILE
 systemctl restart catalogue &>>$LOGS_FILE
 VALIDATE $? "Restarting catalogue"
-
-
 
 
 
