@@ -1,5 +1,5 @@
 #!/bin/bash
-LOGDIR=/var/log/mongo_log
+LOGDIR=/var/log/roboshop_log
 mkdir -p $LOGDIR
 chmod -R 755  $LOGDIR
 chown -R ec2-user:ec2-user $LOGDIR
@@ -20,7 +20,7 @@ VALIDATE () {
   echo -e "$TIME_STAMP [ERROR] $R error for ..$2   $N" | tee -a $LOGFILE
   exit 1
   else
-  echo -e "$TIME_STAMP [SUCCESS] $G success for ..$2   $N" | tee -a $LOGFILE
+  echo -e "$TIME_STAMP [INFO] $G success for ..$2   $N" | tee -a $LOGFILE
   fi
 }
 
