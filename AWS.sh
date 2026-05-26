@@ -27,7 +27,7 @@ do
             --group-name robo-${component} \
             --description "SG for ${component}" \
             --vpc-id $VPC_ID \
-            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${component}-sg}]" \
+            --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=${component}-sg}]" \
             --query 'GroupId' \
             --output text)
 
