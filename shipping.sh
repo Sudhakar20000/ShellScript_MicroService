@@ -25,8 +25,8 @@ VALIDATE() {
 fi
 }
 
-dnf install maven -y
-VALIDATE $? "install maven" &>>$LOGFILE
+dnf install maven -y &>>$LOGFILE
+VALIDATE $? "install maven" 
 
 id roboshop  &>>$LOGFILE
 if [ $? -eq 0 ]; then

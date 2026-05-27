@@ -59,14 +59,7 @@ VALIDATE $? "unzip code"
 npm install &>> "$LOGFILE"
 VALIDATE $? "npm install"
 
-SERVICE_FILE="/home/ec2-user/ShellScript_MicroService/user.service"
-
-if [ -f "$SERVICE_FILE" ]; then
-    cp "$SERVICE_FILE" /etc/systemd/system/user.service
-else
-    echo -e "$TIME_STAMP [ERROR] $R user.service not found $N" | tee -a "$LOGFILE"
-    exit 1
-fi
+cp user.service /etc/systemd/system/
 
 VALIDATE $? "copy service file"
 

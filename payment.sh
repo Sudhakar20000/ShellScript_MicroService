@@ -23,11 +23,11 @@ VALIDATE () {
 fi
 }
 
-dnf install python3 gcc python3-devel -y
+dnf install python3 gcc python3-devel -y &>>$LOGFILE
 
 VALIDATE $? "install python"
 
-id roboshop
+id roboshop &>>$LOGFILE
 if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP the user exists $Y skpping.. $N" | tee -a $LOGFILE
  else
@@ -35,24 +35,24 @@ if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a $LOGFILE
 fi
 
-mkdir -p /app
+mkdir -p /app &>>$LOGFILE
 
-curl -L -o /tmp/payment.zip https://roboshop-artifacts.s3.amazonaws.com/payment-v3.zip
+curl -L -o /tmp/payment.zip https://roboshop-artifacts.s3.amazonaws.com/payment-v3.zip &>>$LOGFILE
 VALIDATE $? "download code"
 
 cd /app 
-unzip /tmp/payment.zip
+unzip /tmp/payment.zip &>>$LOGFILE
 
 VALIDATE $? "unzip code"
 
-cd /app 
-pip3 install -r requirements.txt
+cd /app  &>>$LOGFILE
+pip3 install -r requirements.txt &>>$LOGFILE
 VALIDATE $? "install pip packages"
 
-cp -r payment.service  /etc/systemd/system/payment.service
+cp -r payment.service  /etc/systemd/system/ &>>$LOGFILE
 VALIDATE $? "copy user service"
 
-systemctl daemon-reload
-systemctl enable payment 
-systemctl start payment
+systemctl daemon-reload &>>$LOGFILE
+systemctl enable payment  &>>$LOGFILE
+systemctl start payment &>>$LOGFILE
 VALIDATE $? "enabe and start service"
