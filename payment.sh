@@ -8,6 +8,8 @@ R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
+SCRIPI_DIR=$PWD
+
 USERID=$(id -u)
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 if [ $USERID -ne 0 ]; then
@@ -53,7 +55,7 @@ cd /app  &>>$LOGFILE
 pip3 install -r requirements.txt &>>$LOGFILE
 VALIDATE $? "install pip packages"
 
-cp -r payment.service  /etc/systemd/system/ &>>$LOGFILE
+cp -r $SCRIPI_DIR/payment.service  /etc/systemd/system/ &>>$LOGFILE
 VALIDATE $? "copy user service"
 
 systemctl daemon-reload &>>$LOGFILE

@@ -9,6 +9,7 @@ R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
+SCRIPI_DIR=$PWD
 
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -62,7 +63,7 @@ VALIDATE $? "unzip code"
 npm install &>> "$LOGFILE"
 VALIDATE $? "npm install"
 
-cp user.service /etc/systemd/system/
+cp $SCRIPI_DIR/user.service /etc/systemd/system/
 
 VALIDATE $? "copy service file"
 

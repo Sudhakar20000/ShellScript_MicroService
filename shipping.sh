@@ -9,6 +9,8 @@ R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
+SCRIPI_DIR=$PWD
+
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 MYSQL_HOST=mysql.sudhakar.shop
 if [ $USERID -ne 0 ]; then
@@ -55,7 +57,7 @@ VALIDATE $? "rename jar"
 
 VALIDATE $? "mvn clean package"
 
-cp -r shipping.service /etc/systemd/system/  &>>$LOGFILE
+cp -r $SCRIPI_DIR/shipping.service /etc/systemd/system/  &>>$LOGFILE
 VALIDATE $? "service copy"
 
 systemctl daemon-reload  &>>$LOGFILE
