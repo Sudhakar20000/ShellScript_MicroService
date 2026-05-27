@@ -28,7 +28,7 @@ fi
 dnf install maven -y
 VALIDATE $? "install maven" &>>$LOGFILE
 
-id roboshop
+id roboshop  &>>$LOGFILE
 if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP the user exists $Y skpping.. $N" | tee -a $LOGFILE
  else
