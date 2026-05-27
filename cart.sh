@@ -9,6 +9,7 @@ G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
 USERID=$(id -u)
+SCRIPI_DIR=$PWD
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 if [ $USERID -ne 0 ]; then
   echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE 
@@ -58,7 +59,7 @@ cd /app  &>>$LOGFILE
 npm install &>>$LOGFILE
 VALIDATE $? "install npm packages"
 
-cp -r user.service  /etc/systemd/system/cart.service
+cp -r $SCRIPI_DIR/cart.service  /etc/systemd/system/cart.service
 VALIDATE $? "copy cart service"
 
 systemctl daemon-reload &>>$LOGFILE
