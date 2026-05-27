@@ -8,6 +8,8 @@ R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
+SCRIPI_DIR=$PWD
+
 USERID=$(id -u)
 TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 if [ $USERID -ne 0 ]; then
@@ -42,7 +44,7 @@ cd /usr/share/nginx/html  &>>$LOGFILE
 unzip /tmp/frontend.zip  &>>$LOGFILE
 VALIDATE $? "unzip the code"
 
-cp -r  nginx.conf /etc/nginx/nginx.conf  &>>$LOGFILE
+cp -r  $SCRIPI_DIR/nginx.conf /etc/nginx/nginx.conf  &>>$LOGFILE
 VALIDATE $? "copy configure files"
 
 systemctl restart nginx  &>>$LOGFILE
