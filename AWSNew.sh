@@ -1,5 +1,6 @@
-```bash id="8m0u17"
 #!/bin/bash
+
+set -euo pipefail
 
 AMI_ID="ami-0220d79f3f480ecf5"
 INSTANCE_TYPE="t3.micro"
@@ -12,264 +13,244 @@ SUBNET_ID="subnet-08abe1757462b2432"
 
 MY_IP=$(curl -s ifconfig.me)
 
-ACTION=$1
-shift
+ACTION="${1:-}"
+shift || true
 
-if [ -z "$ACTION" ]; then
+if [[ -z "$ACTION" ]]; then
     echo "Usage:"
     echo "./aws.sh create mongodb nginx"
     echo "./aws.sh delete frontend"
     exit 1
 fi
 
-if [ $# -eq 0 ]; then
-    echo "Please pass component names"
+if [[ $# -eq 0 ]]; then
+    echo "Please provide at least one component"
     exit 1
 fi
 
+
+# =========================
+# Helpers
+# =========================
+is_valid() {
+    [[ "$1" =~ ^[a-zA-Z0-9-]+$ ]]
+}
+
+get_instance_id() {
+    aws ec2 describe-instances \
+        --filters "Name=tag:Name,Values=ec2-$1" \
+                  "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+        --query 'Reservations[0].Instances[0].InstanceId' \
+        --output text 2>/dev/null || true
+}
+
+get_sg_id() {
+    aws ec2 describe-security-groups \
+        --filters Name=group-name,Values=robo-$1 \
+        --query 'SecurityGroups[0].GroupId' \
+        --output text 2>/dev/null || true
+}
+
+
+# =========================
+# CREATE
+# =========================
 create() {
 
-    component=$1
+    component="$1"
 
-    echo "Creating : $component"
+    echo "----------------------------"
+    echo "Creating: $component"
+    echo "----------------------------"
 
-    # ----------------------------
-    # Security Group
-    # ----------------------------
+    if ! is_valid "$component"; then
+        echo "Invalid component name: $component"
+        return
+    fi
 
-    SG_ID=$(aws ec2 describe-security-groups \
-        --filters Name=group-name,Values=robo-${component} \
-        --query 'SecurityGroups[0].GroupId' \
-        --output text)
+    SG_ID=$(get_sg_id "$component")
 
-    if [ "$SG_ID" == "None" ]; then
+    if [[ -z "$SG_ID" || "$SG_ID" == "None" || "$SG_ID" == "null" ]]; then
 
-        echo "Security Group not found, creating..."
+        echo "Creating Security Group..."
 
         SG_ID=$(aws ec2 create-security-group \
-            --group-name robo-${component} \
-            --description "SG for ${component}" \
-            --vpc-id $VPC_ID \
+            --group-name robo-$component \
+            --description "SG for $component" \
+            --vpc-id "$VPC_ID" \
             --query 'GroupId' \
             --output text)
 
         aws ec2 authorize-security-group-ingress \
-            --group-id $SG_ID \
+            --group-id "$SG_ID" \
             --protocol tcp \
             --port 22 \
-            --cidr ${MY_IP}/32
+            --cidr "${MY_IP}/32"
 
-        echo "Security Group Created : $SG_ID"
-
+        echo "SG created: $SG_ID"
     else
-        echo "Security Group already exists : $SG_ID"
+        echo "SG already exists: $SG_ID"
     fi
 
-    # ----------------------------
-    # EC2
-    # ----------------------------
 
-    INSTANCE_ID=$(aws ec2 describe-instances \
-        --filters Name=tag:Name,Values=ec2-${component} \
-                  Name=instance-state-name,Values=pending,running,stopping,stopped \
-        --query 'Reservations[0].Instances[0].InstanceId' \
-        --output text)
+    INSTANCE_ID=$(get_instance_id "$component")
 
-    if [ "$INSTANCE_ID" != "None" ]; then
-        echo "EC2 already exists : $INSTANCE_ID"
+    if [[ -n "$INSTANCE_ID" && "$INSTANCE_ID" != "None" && "$INSTANCE_ID" != "null" ]]; then
+        echo "EC2 already exists: $INSTANCE_ID"
         return
     fi
 
-    echo "Creating EC2..."
+
+    echo "Launching EC2..."
 
     INSTANCE_ID=$(aws ec2 run-instances \
-        --image-id $AMI_ID \
-        --instance-type $INSTANCE_TYPE \
-        --security-group-ids $SG_ID \
-        --subnet-id $SUBNET_ID \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ec2-${component}}]" \
+        --image-id "$AMI_ID" \
+        --instance-type "$INSTANCE_TYPE" \
+        --security-group-ids "$SG_ID" \
+        --subnet-id "$SUBNET_ID" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ec2-$component}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
 
-    echo "EC2 Created : $INSTANCE_ID"
+    echo "Instance created: $INSTANCE_ID"
 
-    sleep 20
+    aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
 
     PRIVATE_IP=$(aws ec2 describe-instances \
-        --instance-ids $INSTANCE_ID \
+        --instance-ids "$INSTANCE_ID" \
         --query 'Reservations[0].Instances[0].PrivateIpAddress' \
         --output text)
 
     PUBLIC_IP=$(aws ec2 describe-instances \
-        --instance-ids $INSTANCE_ID \
+        --instance-ids "$INSTANCE_ID" \
         --query 'Reservations[0].Instances[0].PublicIpAddress' \
         --output text)
 
-    # ----------------------------
-    # Route53
-    # ----------------------------
+    # ---------------- Route53 ----------------
 
-    if [ "$component" == "frontend" ]; then
-        RECORD_NAME=$DOMAIN
-        IP=$PUBLIC_IP
+    if [[ "$component" == "frontend" ]]; then
+        RECORD_NAME="$DOMAIN"
+        IP="$PUBLIC_IP"
     else
-        RECORD_NAME="${component}.${DOMAIN}"
-        IP=$PRIVATE_IP
+        RECORD_NAME="$component.$DOMAIN"
+        IP="$PRIVATE_IP"
     fi
 
-    echo "Creating Route53 record..."
+    ROUTE_FILE="/tmp/route53-${component}.json"
 
-    cat > route53.json <<EOF
+    cat > "$ROUTE_FILE" <<EOF
 {
-  "Comment": "Creating record",
+  "Comment": "UPSERT record for $component",
   "Changes": [{
     "Action": "UPSERT",
     "ResourceRecordSet": {
-      "Name": "${RECORD_NAME}",
+      "Name": "$RECORD_NAME",
       "Type": "A",
       "TTL": 1,
-      "ResourceRecords": [{
-        "Value": "${IP}"
-      }]
+      "ResourceRecords": [{"Value": "$IP"}]
     }
   }]
 }
 EOF
 
     aws route53 change-resource-record-sets \
-        --hosted-zone-id $HOSTED_ZONE_ID \
-        --change-batch file://route53.json >/dev/null
+        --hosted-zone-id "$HOSTED_ZONE_ID" \
+        --change-batch file://"$ROUTE_FILE" >/dev/null
 
-    rm -f route53.json
+    rm -f "$ROUTE_FILE"
 
-    echo "Route53 record created"
-    echo
+    echo "Route53 updated: $RECORD_NAME -> $IP"
 }
 
+
+# =========================
+# DELETE
+# =========================
 delete() {
 
-    component=$1
+    component="$1"
 
-    echo "Deleting : $component"
+    echo "----------------------------"
+    echo "Deleting: $component"
+    echo "----------------------------"
 
-    # ----------------------------
-    # Find Instance
-    # ----------------------------
+    INSTANCE_ID=$(get_instance_id "$component")
 
-    INSTANCE_ID=$(aws ec2 describe-instances \
-        --filters Name=tag:Name,Values=ec2-${component} \
-                  Name=instance-state-name,Values=pending,running,stopping,stopped \
-        --query 'Reservations[0].Instances[0].InstanceId' \
-        --output text)
-
-    if [ "$INSTANCE_ID" == "None" ]; then
-        echo "EC2 not found"
+    if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" || "$INSTANCE_ID" == "null" ]]; then
+        echo "No EC2 found"
     else
 
         PRIVATE_IP=$(aws ec2 describe-instances \
-            --instance-ids $INSTANCE_ID \
+            --instance-ids "$INSTANCE_ID" \
             --query 'Reservations[0].Instances[0].PrivateIpAddress' \
             --output text)
 
         PUBLIC_IP=$(aws ec2 describe-instances \
-            --instance-ids $INSTANCE_ID \
+            --instance-ids "$INSTANCE_ID" \
             --query 'Reservations[0].Instances[0].PublicIpAddress' \
             --output text)
 
-        # ----------------------------
-        # Route53 Delete
-        # ----------------------------
-
-        if [ "$component" == "frontend" ]; then
-            RECORD_NAME=$DOMAIN
-            IP=$PUBLIC_IP
+        if [[ "$component" == "frontend" ]]; then
+            RECORD_NAME="$DOMAIN"
+            IP="$PUBLIC_IP"
         else
-            RECORD_NAME="${component}.${DOMAIN}"
-            IP=$PRIVATE_IP
+            RECORD_NAME="$component.$DOMAIN"
+            IP="$PRIVATE_IP"
         fi
 
-        echo "Deleting Route53 record..."
+        ROUTE_FILE="/tmp/route53-${component}-del.json"
 
-        cat > route53.json <<EOF
+        cat > "$ROUTE_FILE" <<EOF
 {
-  "Comment": "Deleting record",
+  "Comment": "DELETE record for $component",
   "Changes": [{
     "Action": "DELETE",
     "ResourceRecordSet": {
-      "Name": "${RECORD_NAME}",
+      "Name": "$RECORD_NAME",
       "Type": "A",
       "TTL": 1,
-      "ResourceRecords": [{
-        "Value": "${IP}"
-      }]
+      "ResourceRecords": [{"Value": "$IP"}]
     }
   }]
 }
 EOF
 
         aws route53 change-resource-record-sets \
-            --hosted-zone-id $HOSTED_ZONE_ID \
-            --change-batch file://route53.json >/dev/null
+            --hosted-zone-id "$HOSTED_ZONE_ID" \
+            --change-batch file://"$ROUTE_FILE" >/dev/null 2>&1 || true
 
-        rm -f route53.json
+        rm -f "$ROUTE_FILE"
 
-        echo "Route53 record deleted"
-
-        # ----------------------------
-        # Delete EC2
-        # ----------------------------
-
-        echo "Terminating EC2 : $INSTANCE_ID"
-
-        aws ec2 terminate-instances \
-            --instance-ids $INSTANCE_ID >/dev/null
-
-        echo "Waiting for termination..."
-
-        aws ec2 wait instance-terminated \
-            --instance-ids $INSTANCE_ID
+        echo "Terminating EC2..."
+        aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" >/dev/null
+        aws ec2 wait instance-terminated --instance-ids "$INSTANCE_ID"
 
         echo "EC2 deleted"
     fi
 
-    # ----------------------------
-    # Delete Security Group
-    # ----------------------------
 
-    SG_ID=$(aws ec2 describe-security-groups \
-        --filters Name=group-name,Values=robo-${component} \
-        --query 'SecurityGroups[0].GroupId' \
-        --output text)
+    SG_ID=$(get_sg_id "$component")
 
-    if [ "$SG_ID" == "None" ]; then
-        echo "Security Group not found"
+    if [[ -n "$SG_ID" && "$SG_ID" != "None" && "$SG_ID" != "null" ]]; then
+        aws ec2 delete-security-group --group-id "$SG_ID" || true
+        echo "SG deleted: $SG_ID"
     else
-
-        echo "Deleting Security Group : $SG_ID"
-
-        aws ec2 delete-security-group \
-            --group-id $SG_ID
-
-        echo "Security Group deleted"
+        echo "SG not found"
     fi
-
-    echo
 }
 
+
+# =========================
+# MAIN
+# =========================
 for component in "$@"
 do
-
-    if [ "$ACTION" == "create" ]; then
-        create $component
-
-    elif [ "$ACTION" == "delete" ]; then
-        delete $component
-
+    if [[ "$ACTION" == "create" ]]; then
+        create "$component"
+    elif [[ "$ACTION" == "delete" ]]; then
+        delete "$component"
     else
-        echo "Invalid action : $ACTION"
-        echo "Use create or delete"
+        echo "Invalid action: $ACTION"
         exit 1
     fi
-
 done
-```
