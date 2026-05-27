@@ -35,8 +35,11 @@ if [ $? -eq 0 ]; then
  useradd --system --home /app --shell /sbin/nologin --comment "roboshop system user" roboshop  &>>$LOGFILE
  echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a $LOGFILE
 fi
+rm -rf /app  &>>$LOGFILE
+rm -rf /tmp/user.zip  &>>$LOGFILE
+VALIDATE $? "delete existing dir"
 
-mkdir -p /app 
+mkdir -p /app &>>$LOGFILE
 curl -L -o /tmp/shipping.zip https://roboshop-artifacts.s3.amazonaws.com/shipping-v3.zip  &>>$LOGFILE
 cd /app 
 unzip /tmp/shipping.zip  &>>$LOGFILE

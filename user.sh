@@ -47,6 +47,9 @@ else
   echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a "$LOGFILE"
 fi
 
+rm -rf /app  &>>$LOGFILE
+rm -rf /tmp/user.zip  &>>$LOGFILE
+VALIDATE $? "delete existing dir"
 mkdir -p /app
 
 curl -L -o /tmp/user.zip https://roboshop-artifacts.s3.amazonaws.com/user-v3.zip

@@ -35,6 +35,10 @@ if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a $LOGFILE
 fi
 
+rm -rf /app  &>>$LOGFILE
+rm -rf /tmp/user.zip  &>>$LOGFILE
+VALIDATE $? "delete existing dir"
+
 mkdir -p /app &>>$LOGFILE
 
 curl -L -o /tmp/payment.zip https://roboshop-artifacts.s3.amazonaws.com/payment-v3.zip &>>$LOGFILE

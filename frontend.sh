@@ -23,27 +23,27 @@ VALIDATE () {
 fi
 }
 
-dnf module disable nginx -y
-dnf module enable nginx:1.24 -y
-dnf install nginx -y
+dnf module disable nginx -y  &>>$LOGFILE
+dnf module enable nginx:1.24 -y  &>>$LOGFILE
+dnf install nginx -y  &>>$LOGFILE
 VALIDATE $? "install nginx"
 
-systemctl enable nginx 
-systemctl start nginx 
+systemctl enable nginx  &>>$LOGFILE
+systemctl start nginx  &>>$LOGFILE
 VALIDATE $? "start nginx"
 
-rm -rf /usr/share/nginx/html/* 
+rm -rf /usr/share/nginx/html/*  &>>$LOGFILE
 VALIDATE $? "remove default files"
 
-curl -o /tmp/frontend.zip https://roboshop-artifacts.s3.amazonaws.com/frontend-v3.zip
+curl -o /tmp/frontend.zip https://roboshop-artifacts.s3.amazonaws.com/frontend-v3.zip  &>>$LOGFILE
 VALIDATE $? "get the code"
 
-cd /usr/share/nginx/html 
-unzip /tmp/frontend.zip
+cd /usr/share/nginx/html  &>>$LOGFILE
+unzip /tmp/frontend.zip  &>>$LOGFILE
 VALIDATE $? "unzip the code"
 
-cp -r  nginx.conf /etc/nginx/nginx.conf
+cp -r  nginx.conf /etc/nginx/nginx.conf  &>>$LOGFILE
 VALIDATE $? "copy configure files"
 
-systemctl restart nginx 
+systemctl restart nginx  &>>$LOGFILE
 VALIDATE $? "restart the nginx"

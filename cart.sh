@@ -14,6 +14,7 @@ if [ $USERID -ne 0 ]; then
   echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE 
   exit 1
 fi
+
 VALIDATE () {
     if [ $1 -ne 0 ]; then
     echo -e "$TIME_STAMP [error] $R error for $2 $N" | tee -a $LOGFILE
@@ -23,15 +24,15 @@ VALIDATE () {
 fi
 }
 
-dnf module disable nodejs -y
-dnf module enable nodejs:20 -y
+dnf module disable nodejs -y &>>$LOGFILE
+dnf module enable nodejs:20 -y &>>$LOGFILE
 
 VALIDATE $? "enable nodejs"
 
-dnf install nodejs -y
+dnf install nodejs -y &>>$LOGFILE
 VALIDATE $? "install nodejs"
 
-id roboshop
+id roboshop   &>>$LOGFILE
 if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP the user exists $Y skpping.. $N" | tee -a $LOGFILE
  else
@@ -39,24 +40,28 @@ if [ $? -eq 0 ]; then
  echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a $LOGFILE
 fi
 
-mkdir -p /app
+rm -rf /app  &>>$LOGFILE
+rm -rf /tmp/user.zip  &>>$LOGFILE
+VALIDATE $? "delete existing dir"
 
-curl -L -o /tmp/user.zip https://roboshop-artifacts.s3.amazonaws.com/cart-v3.zip
+mkdir -p /app &>>$LOGFILE
+
+curl -L -o /tmp/user.zip https://roboshop-artifacts.s3.amazonaws.com/cart-v3.zip &>>$LOGFILE
 VALIDATE $? "download code"
 
-cd /app 
-unzip /tmp/user.zip
+cd /app  &>>$LOGFILE
+unzip /tmp/user.zip &>>$LOGFILE
 
 VALIDATE $? "unzip code"
-
-cd /app 
-npm install 
+ 
+cd /app  &>>$LOGFILE
+npm install &>>$LOGFILE
 VALIDATE $? "install npm packages"
 
 cp -r user.service  /etc/systemd/system/cart.service
 VALIDATE $? "copy cart service"
 
-systemctl daemon-reload
-systemctl enable cart 
-systemctl start cart
+systemctl daemon-reload &>>$LOGFILE
+systemctl enable cart  &>>$LOGFILE
+systemctl start cart &>>$LOGFILE
 VALIDATE $? "enabe and start service"
