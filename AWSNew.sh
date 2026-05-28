@@ -3,7 +3,7 @@
 #export PATH=$PATH:/usr/local/bin
 
 AMI_ID="ami-0220d79f3f480ecf5"
-ZONE_ID="Z03774782PWBJZ4CLRX9V"  # replace with your zone ID
+ZONE_ID="Z03774782PWBJZ4CLRX9V"  # replace with your hosted zone ID
 DOMAIN_NAME="sudhakar.shop"      # replace with your domain name
 
 R="\e[31m"
@@ -50,20 +50,29 @@ create_sg() {
         --query "SecurityGroups[0].GroupId" \
         --output text 2>/dev/null)
 
-    if [[ -z "$SG_ID" || "$SG_ID" == "None" || "$SG_ID" == "null" ]]; then
+    # normalize bad values
+    if [[ "$SG_ID" == "None" || "$SG_ID" == "null" || -z "$SG_ID" ]]; then
         echo "Creating Security Group: $SG_NAME"
+
         SG_ID=$(aws ec2 create-security-group \
             --group-name "$SG_NAME" \
             --description "Security group for $SG_NAME" \
             --query "GroupId" \
             --output text)
+
         echo "Created SG: $SG_NAME ($SG_ID)"
         echo "Configure ports manually as needed."
     else
         echo "Security Group already exists: $SG_NAME ($SG_ID)"
     fi
 
-    echo $SG_ID
+    # FINAL SAFETY CHECK
+    if [[ -z "$SG_ID" || "$SG_ID" == "None" || "$SG_ID" == "null" ]]; then
+        echo "ERROR: Failed to get SG ID for $SG_NAME"
+        exit 1
+    fi
+
+    echo "$SG_ID"
 }
 
 # =========================
@@ -78,15 +87,20 @@ for instance in "$@"; do
         COMMON_SG_ID=$(create_sg "roboshop-common")
         APP_SG_ID=$(create_sg "roboshop-$instance")
 
+        # DEBUG: show SG IDs
+        echo "DEBUG: COMMON_SG_ID=$COMMON_SG_ID"
+        echo "DEBUG: APP_SG_ID=$APP_SG_ID"
+
         if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" || "$INSTANCE_ID" == "null" ]]; then
             echo "Launching Instance: roboshop-$instance"
             INSTANCE_ID=$(aws ec2 run-instances \
                 --image-id $AMI_ID \
                 --instance-type t3.micro \
-                --security-group-ids $COMMON_SG_ID $APP_SG_ID \
+                --security-group-ids "$COMMON_SG_ID" "$APP_SG_ID" \
                 --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=roboshop-$instance}]" \
                 --query 'Instances[0].InstanceId' \
                 --output text)
+
             echo "Launched Instance: $INSTANCE_ID"
             aws ec2 wait instance-running --instance-ids $INSTANCE_ID
             echo "Instance is running: $INSTANCE_ID"
@@ -95,6 +109,7 @@ for instance in "$@"; do
             # Check state
             STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
                 --query 'Reservations[0].Instances[0].State.Name' --output text)
+
             if [[ "$STATE" == "stopped" ]]; then
                 echo "Starting stopped instance: $INSTANCE_ID"
                 aws ec2 start-instances --instance-ids $INSTANCE_ID
