@@ -1,239 +1,191 @@
 #!/bin/bash
 
-set -e
+#export PATH=$PATH:/usr/local/bin
 
-# =========================
-# FIX PATH ISSUE (IMPORTANT)
-# =========================
-export PATH=$PATH:/usr/local/bin
-
-# =========================
-# AWS CLI PATH
-# =========================
-AWS_CMD="/usr/local/bin/aws"
-
-if [[ ! -f "$AWS_CMD" ]]; then
-    AWS_CMD=$(which aws)
-fi
-
-if [[ -z "$AWS_CMD" ]]; then
-    echo "❌ AWS CLI not found"
-    exit 1
-fi
-
-# =========================
-# CONFIG
-# =========================
 AMI_ID="ami-0220d79f3f480ecf5"
-INSTANCE_TYPE="t3.micro"
+ZONE_ID="Z03774782PWBJZ4CLRX9V" # replace with your zone ID
+DOMAIN_NAME="sudhakar.shop"       # replace with your domain name
 
-HOSTED_ZONE_ID="Z03774782PWBJZ4CLRX9V"
-DOMAIN="sudhakar.shop"
+R="\e[31m"
+G="\e[32m"
+Y="\e[33m"
+N="\e[0m"
 
-VPC_ID="vpc-071995b72d576a774"
-SUBNET_ID="subnet-08abe1757462b2432"
+### Validation ###
+if [ $# -lt 2 ]; then
+    echo -e "$R ERROR:: Atleast 2 arguments required $N"
+    echo "USAGE: $0 [create/delete] [instance1] [instance2...]"
+    exit 1
+fi
 
-# =========================
-# ARGUMENTS
-# =========================
 ACTION=$1
-shift || true
+shift # remove first argument
 
-if [[ -z "$ACTION" ]]; then
-    echo "Usage: $0 create|delete component..."
-    exit 1
-fi
-
-if [[ $# -eq 0 ]]; then
-    echo "Provide at least one component"
+if [ "$ACTION" != "create" ] && [ "$ACTION" != "delete" ]; then
+    echo -e "$R ERROR:: First argument must be either create or delete $N"
+    echo "USAGE: $0 [create/delete] [instance1] [instance2...]"
     exit 1
 fi
 
 # =========================
-# PUBLIC IP
+# Function to get instance ID
 # =========================
-MY_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
-
-if [[ -z "$MY_IP" ]]; then
-    echo "Unable to fetch public IP"
-    exit 1
-fi
-
-echo "Your IP: $MY_IP"
+get_instance_id(){
+    name=$1
+    aws ec2 describe-instances \
+        --filters "Name=tag:Name,Values=roboshop-$name" \
+                  "Name=instance-state-name,Values=running,stopped" \
+        --query "Reservations[0].Instances[0].InstanceId" \
+        --output text
+}
 
 # =========================
-# CREATE FUNCTION
+# Function to create SG if missing
 # =========================
-create() {
-    component=$1
+create_sg() {
+    SG_NAME=$1
 
-    echo "=============================="
-    echo "Creating: $component"
-    echo "=============================="
-
-    # -------------------------
-    # SG CHECK
-    # -------------------------
-    SG_ID=$($AWS_CMD ec2 describe-security-groups \
-        --filters Name=group-name,Values=robo-${component} \
-        --query 'SecurityGroups[0].GroupId' \
+    SG_ID=$(aws ec2 describe-security-groups \
+        --filters "Name=group-name,Values=$SG_NAME" \
+        --query "SecurityGroups[0].GroupId" \
         --output text 2>/dev/null)
 
-    if [[ "$SG_ID" == "None" || "$SG_ID" == "null" || -z "$SG_ID" ]]; then
+    if [ "$SG_ID" == "None" ] || [ -z "$SG_ID" ]; then
+        echo "Creating Security Group: $SG_NAME"
 
-        echo "Creating Security Group..."
-
-        SG_ID=$($AWS_CMD ec2 create-security-group \
-            --group-name robo-${component} \
-            --description "SG for ${component}" \
-            --vpc-id "$VPC_ID" \
-            --query 'GroupId' \
+        SG_ID=$(aws ec2 create-security-group \
+            --group-name "$SG_NAME" \
+            --description "Security group for $SG_NAME" \
+            --query "GroupId" \
             --output text)
 
-        $AWS_CMD ec2 authorize-security-group-ingress \
-            --group-id "$SG_ID" \
-            --protocol tcp \
-            --port 22 \
-            --cidr "${MY_IP}/32" || true
-
-        echo "SG created: $SG_ID"
+        echo "Created SG: $SG_NAME ($SG_ID)"
+        echo "Configure ports manually as needed."
 
     else
-        echo "SG already exists: $SG_ID"
-    fi
-
-    # -------------------------
-    # INSTANCE CHECK
-    # -------------------------
-    INSTANCE_ID=$($AWS_CMD ec2 describe-instances \
-        --filters "Name=tag:Name,Values=ec2-${component}" \
-                  "Name=instance-state-name,Values=pending,running,stopped,stopping" \
-        --query 'Reservations[0].Instances[0].InstanceId' \
-        --output text 2>/dev/null)
-
-    if [[ "$INSTANCE_ID" != "None" && "$INSTANCE_ID" != "null" && -n "$INSTANCE_ID" ]]; then
-        echo "Instance already exists: $INSTANCE_ID"
-        return
-    fi
-
-    # -------------------------
-    # CREATE EC2
-    # -------------------------
-    echo "Launching EC2..."
-
-    INSTANCE_ID=$($AWS_CMD ec2 run-instances \
-        --image-id "$AMI_ID" \
-        --instance-type "$INSTANCE_TYPE" \
-        --security-group-ids "$SG_ID" \
-        --subnet-id "$SUBNET_ID" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ec2-${component}}]" \
-        --query 'Instances[0].InstanceId' \
-        --output text)
-
-    echo "Instance: $INSTANCE_ID"
-
-    $AWS_CMD ec2 wait instance-running --instance-ids "$INSTANCE_ID"
-
-    PRIVATE_IP=$($AWS_CMD ec2 describe-instances \
-        --instance-ids "$INSTANCE_ID" \
-        --query 'Reservations[0].Instances[0].PrivateIpAddress' \
-        --output text)
-
-    PUBLIC_IP=$($AWS_CMD ec2 describe-instances \
-        --instance-ids "$INSTANCE_ID" \
-        --query 'Reservations[0].Instances[0].PublicIpAddress' \
-        --output text)
-
-    echo "Private IP: $PRIVATE_IP"
-    echo "Public IP : $PUBLIC_IP"
-
-    # -------------------------
-    # ROUTE53
-    # -------------------------
-    if [[ "$component" == "frontend" ]]; then
-        RECORD_NAME="$DOMAIN"
-        IP="$PUBLIC_IP"
-    else
-        RECORD_NAME="$component.$DOMAIN"
-        IP="$PRIVATE_IP"
-    fi
-
-    cat > /tmp/route53.json <<EOF
-{
-  "Comment": "UPSERT $component",
-  "Changes": [{
-    "Action": "UPSERT",
-    "ResourceRecordSet": {
-      "Name": "$RECORD_NAME",
-      "Type": "A",
-      "TTL": 60,
-      "ResourceRecords": [{
-        "Value": "$IP"
-      }]
-    }
-  }]
-}
-EOF
-
-    $AWS_CMD route53 change-resource-record-sets \
-        --hosted-zone-id "$HOSTED_ZONE_ID" \
-        --change-batch file:///tmp/route53.json >/dev/null
-
-    rm -f /tmp/route53.json
-
-    echo "Route53 updated: $RECORD_NAME -> $IP"
-}
-
-# =========================
-# DELETE FUNCTION
-# =========================
-delete() {
-    component=$1
-
-    echo "=============================="
-    echo "Deleting: $component"
-    echo "=============================="
-
-    INSTANCE_ID=$($AWS_CMD ec2 describe-instances \
-        --filters "Name=tag:Name,Values=ec2-${component}" \
-                  "Name=instance-state-name,Values=pending,running,stopped,stopping" \
-        --query 'Reservations[0].Instances[0].InstanceId' \
-        --output text 2>/dev/null)
-
-    if [[ "$INSTANCE_ID" == "None" || "$INSTANCE_ID" == "null" || -z "$INSTANCE_ID" ]]; then
-        echo "Instance not found"
-    else
-        echo "Terminating: $INSTANCE_ID"
-
-        $AWS_CMD ec2 terminate-instances --instance-ids "$INSTANCE_ID"
-        $AWS_CMD ec2 wait instance-terminated --instance-ids "$INSTANCE_ID"
-
-        echo "Instance deleted"
-    fi
-
-    SG_ID=$($AWS_CMD ec2 describe-security-groups \
-        --filters Name=group-name,Values=robo-${component} \
-        --query 'SecurityGroups[0].GroupId' \
-        --output text 2>/dev/null)
-
-    if [[ "$SG_ID" != "None" && "$SG_ID" != "null" && -n "$SG_ID" ]]; then
-        $AWS_CMD ec2 delete-security-group --group-id "$SG_ID" || true
-        echo "SG deleted: $SG_ID"
-    else
-        echo "SG not found"
+        echo "Security Group already exists: $SG_NAME ($SG_ID)"
     fi
 }
 
 # =========================
-# MAIN LOOP
+# Main loop for instances
 # =========================
-for component in "$@"; do
-    if [[ "$ACTION" == "create" ]]; then
-        create "$component"
-    elif [[ "$ACTION" == "delete" ]]; then
-        delete "$component"
+for instance in $@; do
+    INSTANCE_ID=$(get_instance_id $instance)
+
+    if [ "$ACTION" == "create" ]; then
+
+        # Create security group if missing
+        create_sg "roboshop-$instance"
+
+        if [ "$INSTANCE_ID" == "None" ]; then
+            echo "Launching Instance: roboshop-$instance"
+            INSTANCE_ID=$( aws ec2 run-instances \
+                --image-id $AMI_ID \
+                --instance-type t3.micro \
+                --security-groups "roboshop-common" "roboshop-$instance" \
+                --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=roboshop-$instance}]" \
+                --query 'Instances[0].InstanceId' \
+                --output text
+            )
+            echo "Launched Instance: $INSTANCE_ID"
+            aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+            echo "Instance is running: $INSTANCE_ID"
+
+        else
+            # Check state
+            STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+                --query 'Reservations[0].Instances[0].State.Name' --output text)
+
+            if [ "$STATE" == "stopped" ]; then
+                echo "Starting stopped instance: $INSTANCE_ID"
+                aws ec2 start-instances --instance-ids $INSTANCE_ID
+                aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+                echo "Instance started: $INSTANCE_ID"
+            else
+                echo "roboshop-$instance already running: $INSTANCE_ID"
+            fi
+        fi
+
+        # Update R53 record
+        if [ "$instance" == "frontend" ]; then
+            IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+                --query 'Reservations[*].Instances[*].PublicIpAddress' \
+                --output text)
+            R53_RECORD="$DOMAIN_NAME"
+        else
+            IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+                --query 'Reservations[*].Instances[*].PrivateIpAddress' \
+                --output text)
+            R53_RECORD="$instance.$DOMAIN_NAME"
+        fi
+
+        aws route53 change-resource-record-sets \
+        --hosted-zone-id $ZONE_ID \
+        --change-batch '
+            {
+                "Comment": "Update A record to new IP",
+                "Changes": [
+                    {
+                        "Action": "UPSERT",
+                        "ResourceRecordSet": {
+                            "Name": "'$R53_RECORD'",
+                            "Type": "A",
+                            "TTL": 1,
+                            "ResourceRecords": [
+                                {
+                                    "Value": "'$IP'"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        '
+        echo "Updated R53 record for: $instance"
+
     else
-        echo "Invalid action"
-        exit 1
+        # Delete action
+        if [ "$INSTANCE_ID" == "None" ]; then
+            echo "$instance already destroyed, nothing to do..."
+        else
+            STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+                --query 'Reservations[0].Instances[0].State.Name' --output text)
+            
+            echo "Terminating Instance: $instance ($STATE)"
+            aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+            aws ec2 wait instance-terminated --instance-ids $INSTANCE_ID
+
+            # Delete Route53 record
+            if [ "$instance" == "frontend" ]; then
+                R53_RECORD="$DOMAIN_NAME"
+            else
+                R53_RECORD="$instance.$DOMAIN_NAME"
+            fi
+
+            aws route53 change-resource-record-sets \
+            --hosted-zone-id $ZONE_ID \
+            --change-batch '
+                {
+                    "Comment": "Delete A record",
+                    "Changes": [
+                        {
+                            "Action": "DELETE",
+                            "ResourceRecordSet": {
+                                "Name": "'$R53_RECORD'",
+                                "Type": "A",
+                                "TTL": 1,
+                                "ResourceRecords": [
+                                    {
+                                        "Value": "'$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)'"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            '
+            echo "Deleted R53 record for: $instance"
+        fi
     fi
 done
