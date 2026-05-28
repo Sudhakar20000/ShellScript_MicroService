@@ -3,7 +3,8 @@
 #export PATH=$PATH:/usr/local/bin
 
 AMI_ID="ami-0220d79f3f480ecf5"
-ZONE_ID="Z03774782PWBJZ4CLRX9V" # replace with your zone ID
+ZONE_ID="Z03774782PWBJZ4CLRX9V
+" # replace with your zone ID
 DOMAIN_NAME="sudhakar.shop"       # replace with your domain name
 
 R="\e[31m"
