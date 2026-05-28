@@ -1,64 +1,65 @@
 #!/bin/bash
-LOGDIR=/var/log/roboshop_log
-LOGFILE=$LOGDIR/$0.sh
-mkdir -p /var/log/roboshop_log
-chmod -R 755 $LOGDIR
-chown -R ec2-user:ec2-user $LOGDIR
+
+LOGS_FOLDER="/var/log/roboshop"
+sudo mkdir -p $LOGS_FOLDER
+sudo chown -R ec2-user:ec2-user $LOGS_FOLDER
+sudo chmod -R 755 $LOGS_FOLDER
+LOGS_FILE="$LOGS_FOLDER/$0.log"
+SCRIPT_DIR=$PWD
+MYSQL_HOST=mysql.sudhakar.shop
+
+USERID=$(id -u)
 R="\e[31m"
 G="\e[32m"
 Y="\e[33m"
 N="\e[0m"
-SCRIPI_DIR=$PWD
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
 
-USERID=$(id -u)
-TIME_STAMP=$(date '+%Y-%m-%d %H:%M:%S')
 if [ $USERID -ne 0 ]; then
-  echo -e "$TIME_STAMP [ERROR] $R switch to root user $N" | tee -a $LOGFILE 
-  exit 1
-fi
-VALIDATE () {
-    if [ $1 -ne 0 ]; then
-    echo -e "$TIME_STAMP [error] $R error for $2 $N" | tee -a $LOGFILE
+    echo -e "$TIMESTAMP [ERROR] $R Please run this script with root access $N" | tee -a $LOGS_FILE
     exit 1
-    else
-    echo -e "$TIME_STAMP [INFO] $G success for $2 $N" | tee -a $LOGFILE
 fi
+
+VALIDATE(){
+    if [ $1 -ne 0 ]; then
+        echo -e "$TIMESTAMP [ERROR] $2 ... $R FAILURE $N" | tee -a $LOGS_FILE
+        exit 1
+    else
+        echo -e "$TIMESTAMP [INFO] $2 ... $G SUCCESS $N" | tee -a $LOGS_FILE
+    fi
 }
 
-dnf install python3 gcc python3-devel -y &>>$LOGFILE
+dnf install python3 gcc python3-devel -y &>>$LOGS_FILE
+VALIDATE $? "Installing Python"
 
-VALIDATE $? "install python"
-
-id roboshop &>>$LOGFILE
-if [ $? -eq 0 ]; then
- echo -e "$TIME_STAMP the user exists $Y skpping.. $N" | tee -a $LOGFILE
- else
- useradd --system --home /app --shell /sbin/nologin --comment "roboshop system user" roboshop  &>>$LOGFILE
- echo -e "$TIME_STAMP [INFO] $G user created $N" | tee -a $LOGFILE
+id roboshop &>>$LOGS_FILE
+if [ $? -ne 0 ]; then
+    useradd --system --home /app --shell /sbin/nologin --comment "roboshop system user" roboshop &>>$LOGS_FILE
+    VALIDATE $? "Creating roboshop system user"
+else
+    echo -e "System user roboshop already created ... $Y SKIPPING $N"
 fi
 
-rm -rf /app  &>>$LOGFILE
-rm -rf /tmp/user.zip  &>>$LOGFILE
-VALIDATE $? "delete existing dir"
+rm -rf /app
+VALIDATE $? "Removing existing code"
 
-mkdir -p /app &>>$LOGFILE
+rm -rf /tmp/payment.zip
+VALIDATE $? "Removed payment zip"
 
-curl -L -o /tmp/payment.zip https://roboshop-artifacts.s3.amazonaws.com/payment-v3.zip &>>$LOGFILE
-VALIDATE $? "download code"
+mkdir -p /app  &>>$LOGS_FILE
+VALIDATE $? "Creating app directory"
 
+curl -o /tmp/payment.zip https://roboshop-artifacts.s3.amazonaws.com/payment-v3.zip  &>>$LOGS_FILE
 cd /app 
-unzip /tmp/payment.zip &>>$LOGFILE
+unzip /tmp/payment.zip &>>$LOGS_FILE
+VALIDATE $? "Downloaded and extracted payment code"
 
-VALIDATE $? "unzip code"
+pip3 install -r requirements.txt  &>>$LOGS_FILE
+VALIDATE $? "Installing dependencies"
 
-cd /app  &>>$LOGFILE
-pip3 install -r requirements.txt &>>$LOGFILE
-VALIDATE $? "install pip packages"
+cp $SCRIPT_DIR/payment.service /etc/systemd/system/payment.service
+VALIDATE $? "Created systemctl service"
 
-cp -r $SCRIPI_DIR/payment.service  /etc/systemd/system/ &>>$LOGFILE
-VALIDATE $? "copy user service"
-
-systemctl daemon-reload &>>$LOGFILE
-systemctl enable payment  &>>$LOGFILE
-systemctl start payment &>>$LOGFILE
-VALIDATE $? "enabe and start service"
+systemctl enable payment 
+systemctl restart payment
+VALIDATE $? "Enable and restarted payment"
