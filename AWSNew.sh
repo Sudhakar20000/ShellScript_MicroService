@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 AMI_ID="ami-0220d79f3f480ecf5"
 INSTANCE_TYPE="t3.micro"
