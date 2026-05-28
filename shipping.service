@@ -5,7 +5,7 @@ Description=Shipping Service
 User=roboshop
 // highlight-start
 Environment=CART_ENDPOINT=cart.sudhakar.shop:8080
-Environment=DB_HOST=mysql.sudhakat.shop
+Environment=DB_HOST=mysql.sudhakar.shop
 // highlight-end
 ExecStart=/bin/java -jar /app/shipping.jar
 SyslogIdentifier=shipping
