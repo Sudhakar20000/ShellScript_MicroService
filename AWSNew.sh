@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#export PATH=$PATH:/usr/local/bin
-
 AMI_ID="ami-0220d79f3f480ecf5"
 ZONE_ID="Z03774782PWBJZ4CLRX9V"  # replace with your hosted zone ID
 DOMAIN_NAME="sudhakar.shop"      # replace with your domain name
@@ -50,29 +48,21 @@ create_sg() {
         --query "SecurityGroups[0].GroupId" \
         --output text 2>/dev/null)
 
-    # normalize bad values
     if [[ "$SG_ID" == "None" || "$SG_ID" == "null" || -z "$SG_ID" ]]; then
-        echo "Creating Security Group: $SG_NAME"
-
+        echo "Creating Security Group: $SG_NAME" >&2
         SG_ID=$(aws ec2 create-security-group \
             --group-name "$SG_NAME" \
             --description "Security group for $SG_NAME" \
             --query "GroupId" \
             --output text)
-
-        echo "Created SG: $SG_NAME ($SG_ID)"
-        echo "Configure ports manually as needed."
+        echo "Created SG: $SG_NAME ($SG_ID)" >&2
+        echo "Configure ports manually as needed." >&2
     else
-        echo "Security Group already exists: $SG_NAME ($SG_ID)"
+        echo "Security Group already exists: $SG_NAME ($SG_ID)" >&2
     fi
 
-    # FINAL SAFETY CHECK
-    if [[ -z "$SG_ID" || "$SG_ID" == "None" || "$SG_ID" == "null" ]]; then
-        echo "ERROR: Failed to get SG ID for $SG_NAME"
-        exit 1
-    fi
-
-    echo "$SG_ID"
+    # RETURN CLEAN ID
+    echo "$SG_ID" | tr -d '\n'
 }
 
 # =========================
@@ -83,20 +73,18 @@ for instance in "$@"; do
 
     if [[ "$ACTION" == "create" ]]; then
 
-        # Create SGs and get IDs
-        COMMON_SG_ID=$(create_sg "roboshop-common")
+        # Create only instance SG
         APP_SG_ID=$(create_sg "roboshop-$instance")
 
-        # DEBUG: show SG IDs
-        echo "DEBUG: COMMON_SG_ID=$COMMON_SG_ID"
-        echo "DEBUG: APP_SG_ID=$APP_SG_ID"
+        # DEBUG
+        echo "DEBUG: APP_SG_ID=[$APP_SG_ID]"
 
         if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" || "$INSTANCE_ID" == "null" ]]; then
             echo "Launching Instance: roboshop-$instance"
             INSTANCE_ID=$(aws ec2 run-instances \
                 --image-id $AMI_ID \
                 --instance-type t3.micro \
-                --security-group-ids "$COMMON_SG_ID" "$APP_SG_ID" \
+                --security-group-ids "$APP_SG_ID" \
                 --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=roboshop-$instance}]" \
                 --query 'Instances[0].InstanceId' \
                 --output text)
@@ -106,7 +94,6 @@ for instance in "$@"; do
             echo "Instance is running: $INSTANCE_ID"
 
         else
-            # Check state
             STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
                 --query 'Reservations[0].Instances[0].State.Name' --output text)
 
@@ -120,7 +107,7 @@ for instance in "$@"; do
             fi
         fi
 
-        # Update Route53 record
+        # Update Route53
         if [[ "$instance" == "frontend" ]]; then
             IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
                 --query 'Reservations[*].Instances[*].PublicIpAddress' --output text)
@@ -152,7 +139,7 @@ for instance in "$@"; do
         fi
 
     else
-        # Delete action
+        # Delete instance
         if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" || "$INSTANCE_ID" == "null" ]]; then
             echo "$instance already destroyed, nothing to do..."
         else
@@ -162,7 +149,7 @@ for instance in "$@"; do
             aws ec2 terminate-instances --instance-ids $INSTANCE_ID
             aws ec2 wait instance-terminated --instance-ids $INSTANCE_ID
 
-            # Get IP BEFORE deletion for Route53
+            # Route53
             if [[ "$instance" == "frontend" ]]; then
                 R53_RECORD="$DOMAIN_NAME"
                 IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
